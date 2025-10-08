@@ -37,7 +37,7 @@ from aiogram.types import (
 )
 
 # Конфигурация
-BOT_TOKEN = "8156929581:AAHiEHkJLSZqiupefNjOCJ9nSV5Rsp5NwUI"
+BOT_TOKEN = "8156929581:AAE7Pew7XX6wxnh4Nh_WA4jeVorkHfh4k2A"
 ADMIN_CHAT_ID = 5778964874
 
 TZ = pytz.timezone("Europe/Moscow")
