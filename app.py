@@ -313,6 +313,7 @@ async def main() -> None:
             writer.writerows(rows)
         await msg.answer_document(document=open(CSV_EXPORT, "rb"), caption="Экспорт записей")
 
+        # ...
     @dp.message(Command("count"))
     async def count_cmd(msg: Message) -> None:
         if not (msg.from_user and msg.from_user.id == ADMIN_CHAT_ID):
@@ -320,7 +321,12 @@ async def main() -> None:
         total = count_total()
         await msg.answer(f"📊 Всего записавшихся: <b>{total}</b>")
 
+    # --- запуск ---
     print("Bot started…")
+    # Сброс вебхука, иначе long polling не будет получать апдейты
+    await bot.delete_webhook(drop_pending_updates=True)
+
+    # Старт поллинга
     await dp.start_polling(bot)
 
 
