@@ -328,3 +328,33 @@ if __name__ == "__main__":
     if not BOT_TOKEN:
         raise SystemExit("Установите переменную окружения BOT_TOKEN")
     asyncio.run(main())
+    # --- FastAPI обёртка для Render ---
+from fastapi import FastAPI
+import uvicorn
+import os, asyncio
+
+app = FastAPI()
+_polling_task = None
+
+@app.get("/")
+async def health():
+    return {"status": "ok"}
+
+@app.on_event("startup")
+async def _on_startup():
+    global _polling_task
+    loop = asyncio.get_event_loop()
+    _polling_task = loop.create_task(main())
+
+@app.on_event("shutdown")
+async def _on_shutdown():
+    global _polling_task
+    if _polling_task and not _polling_task.done():
+        _polling_task.cancel()
+        try:
+            await _polling_task
+        except Exception:
+            pass
+
+if __name__ == "__main__":
+    uvicorn.run("app:app", host="0.0.0.0", port=int(os.getenv("PORT", "10000")))
