@@ -2,6 +2,7 @@ import os
 import re
 import csv
 import sqlite3
+import logging
 from contextlib import closing
 from datetime import datetime
 from typing import Optional
@@ -21,6 +22,10 @@ from aiogram.types import (
     Update,
 )
 
+# ========= Настройка логирования =========
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 # ========= Конфигурация =========
 BOT_TOKEN: str = os.getenv("BOT_TOKEN", "").strip()
 ADMIN_CHAT_ID: Optional[int] = None
@@ -33,6 +38,10 @@ PUBLIC_URL: str = os.getenv("PUBLIC_URL", "").rstrip("/")
 
 if not BOT_TOKEN:
     raise RuntimeError("BOT_TOKEN is not set")
+
+logger.info(f"🔑 Bot token: {BOT_TOKEN[:10]}...")
+logger.info(f"🌐 Public URL: {PUBLIC_URL}")
+logger.info(f"👑 Admin ID: {ADMIN_CHAT_ID}")
 
 TZ = pytz.timezone("Europe/Moscow")
 DB_PATH = "db.sqlite3"
@@ -129,37 +138,64 @@ class Form(StatesGroup):
     child_age = State()
     confirm = State()
 
+# ========= ОТЛАДОЧНЫЕ ХЭНДЛЕРЫ =========
+@dp.message()
+async def debug_all_messages(msg: Message) -> None:
+    logger.info(f"🔍 DEBUG: Получено сообщение от {msg.from_user.id}: '{msg.text}'")
+
+@dp.callback_query()
+async def debug_all_callbacks(cb: CallbackQuery) -> None:
+    logger.info(f"🔍 DEBUG: Получен callback: '{cb.data}'")
+
 # ========= Хэндлеры =========
 @dp.message(Command("ping"))
 async def ping(msg: Message) -> None:
+    logger.info(f"🎯 Сработал /ping от {msg.from_user.id}")
     await msg.answer("pong")
+    logger.info(f"✅ Ответ /ping отправлен")
 
 @dp.message(CommandStart())
 async def on_start(msg: Message, state: FSMContext) -> None:
+    logger.info(f"🎯 Сработал /start от {msg.from_user.id}")
     await state.clear()
     await msg.answer(WELCOME_TEXT, reply_markup=start_keyboard())
+    logger.info(f"✅ Ответ /start отправлен")
 
 @dp.message(Command("menu"))
 async def on_menu(msg: Message, state: FSMContext) -> None:
+    logger.info(f"🎯 Сработал /menu от {msg.from_user.id}")
     await state.clear()
     await msg.answer(WELCOME_TEXT, reply_markup=start_keyboard())
+    logger.info(f"✅ Ответ /menu отправлен")
+
+# Простой эхо-обработчик для теста
+@dp.message(F.text)
+async def echo_test(msg: Message) -> None:
+    if msg.text and not msg.text.startswith('/'):
+        logger.info(f"📨 Эхо-обработчик: {msg.text}")
+        await msg.answer(f"Эхо: {msg.text}")
 
 @dp.message(StateFilter(None), F.text.as_("t"))
 async def on_any_text(msg: Message, t: str, state: FSMContext) -> None:
     if not t:
         return
     if t.strip().lower() in {"start", "старт"}:
+        logger.info(f"🎯 Сработал текстовый 'start' от {msg.from_user.id}")
         await state.clear()
         await msg.answer(WELCOME_TEXT, reply_markup=start_keyboard())
+        logger.info(f"✅ Ответ на 'start' отправлен")
 
 @dp.callback_query(F.data == "signup:start")
 async def signup_start(cb: CallbackQuery, state: FSMContext) -> None:
+    logger.info(f"🎯 Сработал signup:start от {cb.from_user.id}")
     await cb.message.answer("Введите ФИО родителя (как обращаться):")
     await state.set_state(Form.parent_name)
     await cb.answer()
+    logger.info(f"✅ Signup начат")
 
 @dp.message(Form.parent_name)
 async def on_parent_name(msg: Message, state: FSMContext) -> None:
+    logger.info(f"📝 Получено имя родителя: {msg.text}")
     name = re.sub(r"\s+", " ", (msg.text or "").strip())
     if len(name) < 2:
         await msg.answer("Пожалуйста, укажите корректное имя.")
@@ -167,9 +203,11 @@ async def on_parent_name(msg: Message, state: FSMContext) -> None:
     await state.update_data(parent=name)
     await msg.answer("Укажите телефон для связи (например, +7 999 123-45-67):")
     await state.set_state(Form.phone)
+    logger.info(f"✅ Имя сохранено: {name}")
 
 @dp.message(Form.phone)
 async def on_phone(msg: Message, state: FSMContext) -> None:
+    logger.info(f"📞 Получен телефон: {msg.text}")
     phone_e164 = format_phone_to_e164(msg.text or "")
     if not phone_e164:
         await msg.answer("Не удалось распознать номер. Пришлите в формате +7XXXXXXXXXX")
@@ -180,9 +218,11 @@ async def on_phone(msg: Message, state: FSMContext) -> None:
     await state.update_data(phone_e164=phone_e164)
     await msg.answer("Возраст ребёнка (например, 3 года 4 месяца):")
     await state.set_state(Form.child_age)
+    logger.info(f"✅ Телефон сохранен: {phone_e164}")
 
 @dp.message(Form.child_age)
 async def on_child_age(msg: Message, state: FSMContext) -> None:
+    logger.info(f"👶 Получен возраст: {msg.text}")
     age = (msg.text or "").strip()
     if len(age) < 1:
         await msg.answer("Пожалуйста, укажите возраст ребёнка.")
@@ -202,14 +242,17 @@ async def on_child_age(msg: Message, state: FSMContext) -> None:
     ])
     await msg.answer(text, reply_markup=kb)
     await state.set_state(Form.confirm)
+    logger.info(f"✅ Возраст сохранен: {age}")
 
 @dp.callback_query(Form.confirm, F.data.startswith("confirm:"))
 async def on_confirm(cb: CallbackQuery, state: FSMContext) -> None:
+    logger.info(f"✅ Сработал confirm: {cb.data}")
     action = cb.data.split(":", 1)[1]
     if action == "no":
         await state.clear()
         await cb.message.answer("Запись отменена. Если передумаете — нажмите /start")
         await cb.answer()
+        logger.info(f"❌ Запись отменена пользователем {cb.from_user.id}")
         return
 
     data = await state.get_data()
@@ -245,14 +288,17 @@ async def on_confirm(cb: CallbackQuery, state: FSMContext) -> None:
                     f"Создано: {booking.created_at}"
                 ),
             )
-        except Exception:
-            pass
+            logger.info(f"📢 Уведомление отправлено админу {ADMIN_CHAT_ID}")
+        except Exception as e:
+            logger.error(f"❌ Ошибка отправки админу: {e}")
 
     await state.clear()
     await cb.answer()
+    logger.info(f"✅ Запись завершена для пользователя {cb.from_user.id}, код: {code}")
 
 @dp.message(Command("export"))
 async def export_csv(msg: Message) -> None:
+    logger.info(f"📊 Сработал /export от {msg.from_user.id}")
     if ADMIN_CHAT_ID and msg.from_user and msg.from_user.id != ADMIN_CHAT_ID:
         return
     rows = [("created_at", "code", "parent", "phone_e164", "child_age")]
@@ -263,13 +309,16 @@ async def export_csv(msg: Message) -> None:
         writer = csv.writer(f)
         writer.writerows(rows)
     await msg.answer_document(document=open(CSV_EXPORT, "rb"), caption="Экспорт записей")
+    logger.info(f"✅ Экспорт завершен, записей: {len(rows)-1}")
 
 @dp.message(Command("count"))
 async def count_cmd(msg: Message) -> None:
+    logger.info(f"📈 Сработал /count от {msg.from_user.id}")
     if not (msg.from_user and ADMIN_CHAT_ID and msg.from_user.id == ADMIN_CHAT_ID):
         return
     total = count_total()
     await msg.answer(f"📊 Всего записавшихся: <b>{total}</b>")
+    logger.info(f"✅ Отправлен счетчик: {total}")
 
 # ========= FastAPI + Webhook =========
 app = FastAPI()
@@ -280,30 +329,41 @@ async def health():
 
 @app.on_event("startup")
 async def on_startup():
+    logger.info("🚀 Запуск приложения...")
     init_db()
     await bot.delete_webhook(drop_pending_updates=True)
     if PUBLIC_URL:
         webhook_url = f"{PUBLIC_URL}/webhook"
         await bot.set_webhook(webhook_url)
-        print("✅ Webhook установлен:", webhook_url)
+        logger.info(f"✅ Webhook установлен: {webhook_url}")
+        
+        # Дополнительная проверка
+        try:
+            webhook_info = await bot.get_webhook_info()
+            logger.info(f"📋 Webhook info: {webhook_info.url}")
+        except Exception as e:
+            logger.error(f"❌ Ошибка получения webhook info: {e}")
     else:
-        print("⚠️ PUBLIC_URL не установлен. Вебхук не настроен.")
+        logger.error("❌ PUBLIC_URL не установлен. Вебхук не настроен.")
 
 @app.on_event("shutdown")
 async def on_shutdown():
+    logger.info("🛑 Выключение приложения...")
     try:
         await bot.delete_webhook(drop_pending_updates=False)
-        print("✅ Webhook удален")
+        logger.info("✅ Webhook удален")
     except Exception as e:
-        print(f"❌ Ошибка при удалении вебхука: {e}")
+        logger.error(f"❌ Ошибка при удалении вебхука: {e}")
 
 @app.post("/webhook")
 async def telegram_webhook(request: Request):
     try:
         data = await request.json()
+        logger.info(f"📨 Получен webhook запрос: {data}")
         update = Update.model_validate(data, context={"bot": bot})
         await dp.feed_update(bot, update)
+        logger.info(f"✅ Webhook обработан успешно")
         return Response(status_code=200)
     except Exception as e:
-        print(f"❌ Ошибка в вебхуке: {e}")
+        logger.error(f"❌ Ошибка в вебхуке: {e}")
         return Response(status_code=500)
