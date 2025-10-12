@@ -1,7 +1,8 @@
 aiogram==3.13.1
-phonenumbers
-pytz
+phonenumbers==8.13.27
+pytz==2024.1
 fastapi==0.104.1
 uvicorn==0.24.0
-python-dotenv
-aiofiles
+python-dotenv==1.0.0
+aiofiles==23.2.1
+httpx==0.25.2
