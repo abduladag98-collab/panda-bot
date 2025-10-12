@@ -1,6 +1,7 @@
 aiogram==3.13.1
 phonenumbers
 pytz
-fastapi
-uvicorn
+fastapi==0.104.1
+uvicorn==0.24.0
 python-dotenv
+aiofiles
